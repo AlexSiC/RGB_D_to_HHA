@@ -1,0 +1,34 @@
+# Example configuration for the RGB/Depth -> HHA pipeline
+
+paths:
+  raw_dir: ./data/raw
+  processed_dir: ./data/processed
+
+inpainting:
+  # Supported: linear_nearest, rbf, none
+  method: linear_nearest
+
+augmentation:
+  enabled: true
+  seed: 42
+  horizontal_flip_prob: 0.5
+  random_scale_limit: 0.1
+  crop_size: [800, 600]
+  rotate_limit: 15
+  pad_if_needed: true
+
+cameras:
+  # Intrinsic matrices parameters are required for HHA conversion
+  rgb_camera_matrix:
+    fx: 692.683
+    fy: 692.738
+    cx: 408.508
+    cy: 295.696
+  depth_camera_matrix:
+    fx: 712.929
+    fy: 712.808
+    cx: 396.903
+    cy: 295.821
+
+# Placeholder config. Will be filled in later.
+

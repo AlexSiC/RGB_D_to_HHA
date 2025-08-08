@@ -1,0 +1,10 @@
+pyyaml
+numpy
+pydantic
+opencv-python
+scipy
+albumentations
+tqdm
+Pillow
+
+
