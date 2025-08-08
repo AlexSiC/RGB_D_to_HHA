@@ -1,0 +1,3 @@
+[submodule "third_party/Depth2HHA-python"]
+	path = third_party/Depth2HHA-python
+	url = https://github.com/charlesCXK/Depth2HHA-python
