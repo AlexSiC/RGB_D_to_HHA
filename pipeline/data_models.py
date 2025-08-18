@@ -62,6 +62,9 @@ class PipelineConfig(BaseModel):
     class OutputsConfig(BaseModel):
         """Output/visualization toggles."""
         save_hha_channels_jet: bool = False
+        enable_train_export: bool = False
+        train_dir: str = "data/train"
+        save_hha_u8_in_train: bool = False
 
     inpainting: InpaintingConfig
     augmentation: AugmentationConfig

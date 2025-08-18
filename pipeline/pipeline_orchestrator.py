@@ -119,6 +119,7 @@ class PipelineOrchestrator:
             processed_baseline,
             self.run_dir,
             save_hha_channels_jet=getattr(self.config.outputs, "save_hha_channels_jet", False),
+            outputs=getattr(self.config, 'outputs', None),
         )
 
         for seed in variant_seeds:
@@ -153,6 +154,7 @@ class PipelineOrchestrator:
                 processed,
                 run_dir,
                 save_hha_channels_jet=getattr(self.config.outputs, "save_hha_channels_jet", False),
+                outputs=getattr(self.config, 'outputs', None),
             )
 
 

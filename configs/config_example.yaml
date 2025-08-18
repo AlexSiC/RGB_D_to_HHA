@@ -33,6 +33,9 @@ cameras:
 
 outputs:
   save_hha_channels_jet: true
+  enable_train_export: true
+  train_dir: data/train
+  save_hha_u8_in_train: true
 
 # Placeholder config. Will be filled in later.
 

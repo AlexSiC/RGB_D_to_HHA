@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import List
+from typing import List, Optional, Any
 
 import cv2
 import numpy as np
@@ -167,7 +167,13 @@ class FileService:
         cv2.imwrite(str(out_path), depth_uint16)
         return out_path
 
-    def save_processed_data(self, data: ProcessedFrameData, run_dir: Path, save_hha_channels_jet: bool = False) -> None:
+    def save_processed_data(
+        self,
+        data: ProcessedFrameData,
+        run_dir: Path,
+        save_hha_channels_jet: bool = False,
+        outputs: Optional[Any] = None,
+    ) -> None:
         # Save filled depth (m -> uint16 mm)
         depth_dir = run_dir / "depth_filled_png"
         self._ensure_dir(depth_dir)
@@ -216,6 +222,59 @@ class FileService:
                     norm = np.clip((chan - vmin) * 255.0 / (vmax - vmin), 0, 255).astype(np.uint8)
                 jet = cv2.applyColorMap(norm, cv2.COLORMAP_JET)
                 cv2.imwrite(str(hha_dir / f"{data.identifier.base_name}_hha_{name}_jet.png"), jet)
+
+        # Optional: export to train/images & train/masks if enabled in outputs config provided by caller
+        try:
+            if outputs and getattr(outputs, 'enable_train_export', False):
+                train_root = Path(getattr(outputs, 'train_dir', 'data/train'))
+                images_dir = train_root / 'images'
+                masks_dir = train_root / 'masks'
+                self._ensure_dir(images_dir)
+                self._ensure_dir(masks_dir)
+
+                # Build deterministic stem: frameId + variant suffix if present in run_dir (seed_xx)
+                variant_suffix = ''
+                parts = list(run_dir.parts)
+                if parts and parts[-1].startswith('seed_'):
+                    variant_suffix = f"__{parts[-1]}"
+
+                # Hash from vis content to identify transform parameters implicitly
+                import hashlib
+                hasher = hashlib.sha1()
+                hasher.update(vis.tobytes())
+                ops_hash = hasher.hexdigest()[:8]
+
+                stem = f"{data.identifier.base_name}{variant_suffix}__h{ops_hash}"
+
+                # Choose HHA format for training
+                if getattr(outputs, 'save_hha_u8_in_train', False):
+                    hha_img = vis
+                else:
+                    hha_img = hha_uint16
+
+                cv2.imwrite(str(images_dir / f"{stem}.png"), hha_img)
+                cv2.imwrite(str(masks_dir / f"{stem}.png"), mask_u8)
+
+                # Append manifest row
+                import csv
+                manifest = train_root / 'index.csv'
+                header = ['image_path', 'mask_path', 'frame_id', 'variant', 'ops_hash']
+                write_header = not manifest.exists()
+                with manifest.open('a', newline='', encoding='utf-8') as f:
+                    w = csv.writer(f)
+                    if write_header:
+                        w.writerow(header)
+                    variant = parts[-1] if variant_suffix else 'baseline'
+                    w.writerow([
+                        str(images_dir / f"{stem}.png"),
+                        str(masks_dir / f"{stem}.png"),
+                        data.identifier.base_name,
+                        variant,
+                        ops_hash,
+                    ])
+        except Exception:
+            # Do not fail pipeline due to export errors
+            pass
 
         # Save mask (uint8)
         masks_dir = run_dir / "masks"
