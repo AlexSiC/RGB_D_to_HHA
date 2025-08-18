@@ -252,8 +252,20 @@ class FileService:
                 else:
                     hha_img = hha_uint16
 
-                cv2.imwrite(str(images_dir / f"{stem}.png"), hha_img)
-                cv2.imwrite(str(masks_dir / f"{stem}.png"), mask_u8)
+                img_path = str(images_dir / f"{stem}.png")
+                mask_path = str(masks_dir / f"{stem}.png")
+                _ = cv2.imwrite(img_path, np.ascontiguousarray(hha_img))
+                # Ensure mask is contiguous and try cv2
+                mask_u8 = data.segmentation_mask.astype(np.uint8)
+                mask_contig = np.ascontiguousarray(mask_u8)
+                ok = cv2.imwrite(mask_path, mask_contig)
+                if not ok:
+                    # Fallback to PIL if OpenCV refuses
+                    try:
+                        from PIL import Image  # type: ignore
+                        Image.fromarray(mask_contig).save(mask_path)
+                    except Exception:
+                        pass
 
                 # Append manifest row
                 import csv
@@ -266,8 +278,8 @@ class FileService:
                         w.writerow(header)
                     variant = parts[-1] if variant_suffix else 'baseline'
                     w.writerow([
-                        str(images_dir / f"{stem}.png"),
-                        str(masks_dir / f"{stem}.png"),
+                        img_path,
+                        mask_path,
                         data.identifier.base_name,
                         variant,
                         ops_hash,
@@ -276,11 +288,11 @@ class FileService:
             # Do not fail pipeline due to export errors
             pass
 
-        # Save mask (uint8)
+        # Save mask (uint8) into run_dir for reference
         masks_dir = run_dir / "masks"
         self._ensure_dir(masks_dir)
-        mask_u8 = data.segmentation_mask.astype(np.uint8)
-        cv2.imwrite(str(masks_dir / f"{data.identifier.base_name}_mask.png"), mask_u8)
+        _mask_u8 = data.segmentation_mask.astype(np.uint8)
+        cv2.imwrite(str(masks_dir / f"{data.identifier.base_name}_mask.png"), _mask_u8)
 
         # Save (possibly augmented) RGB image
         rgb_dir = run_dir / "rgb"
