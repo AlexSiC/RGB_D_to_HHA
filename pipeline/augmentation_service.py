@@ -37,24 +37,32 @@ class AugmentationService:
         transforms = [
             A.HorizontalFlip(p=config.horizontal_flip_prob),
             A.RandomScale(scale_limit=config.random_scale_limit, p=1.0),
-            A.Rotate(limit=config.rotate_limit, border_mode=cv2.BORDER_CONSTANT, value=0, mask_value=0, p=1.0),
-            A.RandomCrop(height=height, width=width, p=1.0),
+            A.Rotate(
+                limit=config.rotate_limit,
+                border_mode=cv2.BORDER_CONSTANT,
+                border_value=0,
+                mask_value=0,
+                p=1.0,
+            ),
         ]
 
         if config.pad_if_needed:
-            transforms.insert(
-                0,
+            # Ensure size is at least target AFTER scale/rotate
+            transforms.append(
                 A.PadIfNeeded(
                     min_height=height,
                     min_width=width,
                     border_mode=cv2.BORDER_CONSTANT,
-                    value=0,
+                    border_value=0,
                     mask_value=0,
                     p=1.0,
-                ),
+                )
             )
 
-        pipeline = A.Compose(
+        transforms.append(A.RandomCrop(height=height, width=width, p=1.0))
+
+        # Use ReplayCompose to keep exact transform parameters for auditability
+        pipeline = A.ReplayCompose(
             transforms,
             additional_targets={
                 "depth": "image",  # treat as image for geometric transforms
@@ -63,7 +71,12 @@ class AugmentationService:
         )
 
         result = pipeline(image=rgb, depth=depth, mask=mask)
-        return {"rgb": result["image"], "depth": result["depth"], "mask": result["mask"]}
+        return {
+            "rgb": result["image"],
+            "depth": result["depth"],
+            "mask": result["mask"],
+            "replay": result.get("replay"),
+        }
 
 
 
