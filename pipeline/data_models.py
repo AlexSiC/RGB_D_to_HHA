@@ -46,6 +46,8 @@ class PipelineConfig(BaseModel):
         crop_size: Tuple[int, int]
         rotate_limit: int = 15
         pad_if_needed: bool = True
+        # Optional list of seeds for multi-variant augmentation in a single run
+        seeds: List[int] = []
 
     class CamerasConfig(BaseModel):
         """Configuration for camera intrinsic parameters."""
@@ -57,10 +59,15 @@ class PipelineConfig(BaseModel):
         raw_dir: str
         processed_dir: str
 
+    class OutputsConfig(BaseModel):
+        """Output/visualization toggles."""
+        save_hha_channels_jet: bool = False
+
     inpainting: InpaintingConfig
     augmentation: AugmentationConfig
     cameras: CamerasConfig
     paths: PathsConfig
+    outputs: OutputsConfig = OutputsConfig()
 
 
 class RawFrameData(BaseModel):

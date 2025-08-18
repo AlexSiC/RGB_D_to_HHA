@@ -99,24 +99,61 @@ class PipelineOrchestrator:
         # Annotation conversion (normalized polygons -> mask)
         mask = self.annotation_service.convert_polygons_to_mask(raw.polygons, raw.rgb_image.shape[:2])
 
-        # Augment synchronously (if enabled)
-        aug = self.augmentation_service.apply(raw.rgb_image, depth_filled_m, mask, self.config.augmentation)
-        rgb_aug = aug["rgb"]
-        depth_aug = aug["depth"]
-        mask_aug = aug["mask"]
+        # Prepare list of seeds for multi-variant run (baseline + variants)
+        seeds = list(self.config.augmentation.seeds or [])
 
-        # HHA conversion using depth camera intrinsics
+        # Baseline: if augmentation disabled OR seeds empty, still produce one variant
+        variant_seeds = seeds if seeds else [self.config.augmentation.seed]
+
+        # Always produce baseline (no augmentation) in root run_dir
         K = self.config.cameras.depth_camera_matrix.to_numpy_array()
-        hha = self.hha_service.convert(depth_aug.astype(np.float32), K.astype(np.float32))
-
-        processed = ProcessedFrameData(
+        hha_baseline = self.hha_service.convert(depth_filled_m.astype(np.float32), K.astype(np.float32))
+        processed_baseline = ProcessedFrameData(
             identifier=frame_id,
-            rgb_image=rgb_aug,
-            depth_map_filled_m=depth_aug,
-            hha_image=hha,
-            segmentation_mask=mask_aug,
+            rgb_image=raw.rgb_image,
+            depth_map_filled_m=depth_filled_m,
+            hha_image=hha_baseline,
+            segmentation_mask=mask,
         )
-        self.file_service.save_processed_data(processed, self.run_dir)
+        self.file_service.save_processed_data(
+            processed_baseline,
+            self.run_dir,
+            save_hha_channels_jet=getattr(self.config.outputs, "save_hha_channels_jet", False),
+        )
+
+        for seed in variant_seeds:
+            # Clone aug config with current seed
+            aug_cfg = self.config.augmentation.model_copy(deep=True)
+            aug_cfg.seed = seed
+
+            aug = self.augmentation_service.apply(raw.rgb_image, depth_filled_m, mask, aug_cfg)
+            rgb_aug = aug["rgb"]
+            depth_aug = aug["depth"]
+            mask_aug = aug["mask"]
+
+            # HHA conversion using depth camera intrinsics
+            K = self.config.cameras.depth_camera_matrix.to_numpy_array()
+            hha = self.hha_service.convert(depth_aug.astype(np.float32), K.astype(np.float32))
+
+            processed = ProcessedFrameData(
+                identifier=frame_id,
+                rgb_image=rgb_aug,
+                depth_map_filled_m=depth_aug,
+                hha_image=hha,
+                segmentation_mask=mask_aug,
+            )
+
+            # Create per-variant subdirectory if multiple variants
+            run_dir = self.run_dir
+            if len(variant_seeds) > 1:
+                run_dir = run_dir / f"seed_{seed}"
+                run_dir.mkdir(parents=True, exist_ok=True)
+
+            self.file_service.save_processed_data(
+                processed,
+                run_dir,
+                save_hha_channels_jet=getattr(self.config.outputs, "save_hha_channels_jet", False),
+            )
 
 
 

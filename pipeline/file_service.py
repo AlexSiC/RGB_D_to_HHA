@@ -39,12 +39,17 @@ class FileService:
             if not frame_id:
                 continue
 
-            depth_file = depth_dir / f"depth_data_{frame_id}.txt"
+            # Depth file may be named either 'depth_data_<id>.txt' or 'depth_data_frame_<id>.txt'
+            depth_candidates = [
+                depth_dir / f"depth_data_{frame_id}.txt",
+                depth_dir / f"depth_data_frame_{frame_id}.txt",
+            ]
+            depth_file = next((p for p in depth_candidates if p.exists()), None)
             # annotation file could have varying hash suffix; pick the first match
             candidates = list(annot_dir.glob(f"rgb_frame_{frame_id}_png.rf.*.txt"))
             annot_file = candidates[0] if candidates else None
 
-            if not depth_file.exists() or annot_file is None:
+            if depth_file is None or annot_file is None:
                 continue
 
             frames.append(
@@ -63,9 +68,69 @@ class FileService:
         if rgb is None:
             raise FileNotFoundError(f"Cannot read RGB image: {frame_id.raw_rgb_path}")
 
-        # Depth txt: rows of millimeter values
+        # Depth txt: header with Width/Height, then triples: row,column,depth_value (in mm)
         try:
-            depth_mm = np.loadtxt(frame_id.raw_depth_path, dtype=np.float32)
+            height = None
+            width = None
+            # Pre-scan first ~10 lines for metadata
+            with open(frame_id.raw_depth_path, "r", encoding="utf-8") as f:
+                header_lines = [next(f) for _ in range(10)]
+            for line in header_lines:
+                line_stripped = line.strip()
+                if line_stripped.lower().startswith("width:"):
+                    try:
+                        width = int(line_stripped.split(":", 1)[1])
+                    except Exception:
+                        pass
+                elif line_stripped.lower().startswith("height:"):
+                    try:
+                        height = int(line_stripped.split(":", 1)[1])
+                    except Exception:
+                        pass
+        except StopIteration:
+            # File shorter than expected; will fall back to robust path below
+            pass
+        except Exception as exc:
+            raise RuntimeError(f"Failed to pre-read depth header: {frame_id.raw_depth_path}") from exc
+
+        try:
+            if height is None or width is None:
+                # Robust parse: scan full file to detect max row/col
+                max_r = 0
+                max_c = 0
+                with open(frame_id.raw_depth_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        s = line.strip()
+                        if not s or s[0].isalpha():
+                            continue
+                        parts = s.split(",")
+                        if len(parts) != 3:
+                            continue
+                        r = int(parts[0])
+                        c = int(parts[1])
+                        max_r = max(max_r, r)
+                        max_c = max(max_c, c)
+                height = max_r + 1
+                width = max_c + 1
+
+            depth_mm = np.zeros((height, width), dtype=np.float32)
+            with open(frame_id.raw_depth_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    s = line.strip()
+                    if not s or s[0].isalpha():
+                        # Skip headers like 'Width:', 'Height:', 'Format:' etc.
+                        continue
+                    parts = s.split(",")
+                    if len(parts) != 3:
+                        continue
+                    try:
+                        r = int(parts[0])
+                        c = int(parts[1])
+                        v = float(parts[2])
+                    except Exception:
+                        continue
+                    if 0 <= r < height and 0 <= c < width:
+                        depth_mm[r, c] = v
         except Exception as exc:
             raise RuntimeError(f"Failed to read depth txt: {frame_id.raw_depth_path}") from exc
 
@@ -102,7 +167,7 @@ class FileService:
         cv2.imwrite(str(out_path), depth_uint16)
         return out_path
 
-    def save_processed_data(self, data: ProcessedFrameData, run_dir: Path) -> None:
+    def save_processed_data(self, data: ProcessedFrameData, run_dir: Path, save_hha_channels_jet: bool = False) -> None:
         # Save filled depth (m -> uint16 mm)
         depth_dir = run_dir / "depth_filled_png"
         self._ensure_dir(depth_dir)
@@ -114,6 +179,43 @@ class FileService:
         self._ensure_dir(hha_dir)
         hha_uint16 = np.clip(np.round(data.hha_image * 1000.0), 0, 65535).astype(np.uint16)
         cv2.imwrite(str(hha_dir / f"{data.identifier.base_name}_hha.png"), hha_uint16)
+
+        # Also save visualization-friendly version normalized to uint8 per channel
+        hha = data.hha_image.astype(np.float32)
+        vis = np.zeros_like(hha, dtype=np.uint8)
+        for ch in range(hha.shape[2]):
+            chan = hha[:, :, ch]
+            finite = np.isfinite(chan)
+            if np.any(finite):
+                vmin = float(chan[finite].min())
+                vmax = float(chan[finite].max())
+            else:
+                vmin, vmax = 0.0, 1.0
+            if vmax - vmin < 1e-6:
+                scaled = np.zeros_like(chan, dtype=np.uint8)
+            else:
+                scaled = np.clip((chan - vmin) * 255.0 / (vmax - vmin), 0, 255).astype(np.uint8)
+            vis[:, :, ch] = scaled
+        cv2.imwrite(str(hha_dir / f"{data.identifier.base_name}_hha_vis_u8.png"), vis)
+
+        # Optional: save per-channel JET visualizations if requested by caller
+        if save_hha_channels_jet:
+            # Angle (A), Height (H), Disparity (D) channels assumed order [A,H,D]
+            names = ['angle', 'height', 'disparity']
+            for ch, name in enumerate(names):
+                chan = hha[:, :, ch]
+                finite = np.isfinite(chan)
+                if np.any(finite):
+                    vmin = float(chan[finite].min())
+                    vmax = float(chan[finite].max())
+                else:
+                    vmin, vmax = 0.0, 1.0
+                if vmax - vmin < 1e-6:
+                    norm = np.zeros_like(chan, dtype=np.uint8)
+                else:
+                    norm = np.clip((chan - vmin) * 255.0 / (vmax - vmin), 0, 255).astype(np.uint8)
+                jet = cv2.applyColorMap(norm, cv2.COLORMAP_JET)
+                cv2.imwrite(str(hha_dir / f"{data.identifier.base_name}_hha_{name}_jet.png"), jet)
 
         # Save mask (uint8)
         masks_dir = run_dir / "masks"

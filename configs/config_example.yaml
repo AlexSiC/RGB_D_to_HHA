@@ -11,6 +11,7 @@ inpainting:
 augmentation:
   enabled: true
   seed: 42
+  seeds: [41, 42, 43, 44, 45]
   horizontal_flip_prob: 0.5
   random_scale_limit: 0.1
   crop_size: [800, 600]
@@ -29,6 +30,9 @@ cameras:
     fy: 712.808
     cx: 396.903
     cy: 295.821
+
+outputs:
+  save_hha_channels_jet: true
 
 # Placeholder config. Will be filled in later.
 
