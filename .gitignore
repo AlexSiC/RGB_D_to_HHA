@@ -1,24 +1,3 @@
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.so
-.Python
-.venv/
-venv/
-
-# Packaging
-build/
-dist/
-*.egg-info/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Project data/logs
-logs/
-data/processed/
-
-
+data/**
+logs/**
+!.gitignore
