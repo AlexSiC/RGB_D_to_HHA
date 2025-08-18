@@ -14,6 +14,7 @@ from .inpainting_service import InpaintingService
 from .annotation_service import AnnotationService
 from .augmentation_service import AugmentationService
 from .hha_service import HHAService
+from .diagnostics_service import DiagnosticsService
 
 
 class PipelineOrchestrator:
@@ -34,6 +35,7 @@ class PipelineOrchestrator:
         self.annotation_service = annotation_service
         self.augmentation_service = augmentation_service
         self.hha_service = hha_service
+        self.diag_service = DiagnosticsService()
 
         self._setup_logging()
         self.run_dir = self._create_run_dir()
@@ -107,7 +109,30 @@ class PipelineOrchestrator:
 
         # Always produce baseline (no augmentation) in root run_dir
         K = self.config.cameras.depth_camera_matrix.to_numpy_array()
-        hha_baseline = self.hha_service.convert(depth_filled_m.astype(np.float32), K.astype(np.float32))
+        roi_cfg = {
+            'bottom_band_frac': float(self.config.hha.bottom_band_frac),
+            'side_band_frac': float(self.config.hha.side_band_frac),
+            'center_exclude_width_frac': float(self.config.hha.center_exclude_width_frac),
+            'ransac_seed': int(self.config.hha.ransac_seed),
+            'gravity_init': str(self.config.hha.gravity_init),
+        }
+        hha_baseline = self.hha_service.convert(
+            depth_filled_m.astype(np.float32),
+            K.astype(np.float32),
+            roi=roi_cfg,
+            exclude_mask=mask.astype(bool),
+            ransac_thresh_cm=float(self.config.hha.ransac_thresh_cm),
+            min_inlier_ratio=float(self.config.hha.min_inlier_ratio),
+        )
+        # Diagnostics for baseline
+        diagnostics = self.diag_service.compute(
+            depth_filled_m.astype(np.float32),
+            K.astype(np.float32),
+            roi=roi_cfg,
+            exclude_mask=mask.astype(bool),
+            ransac_thresh_cm=float(self.config.hha.ransac_thresh_cm),
+            min_inlier_ratio=float(self.config.hha.min_inlier_ratio),
+        )
         processed_baseline = ProcessedFrameData(
             identifier=frame_id,
             rgb_image=raw.rgb_image,
@@ -120,6 +145,7 @@ class PipelineOrchestrator:
             self.run_dir,
             save_hha_channels_jet=getattr(self.config.outputs, "save_hha_channels_jet", False),
             outputs=getattr(self.config, 'outputs', None),
+            diagnostics=diagnostics,
         )
 
         for seed in variant_seeds:
@@ -134,7 +160,22 @@ class PipelineOrchestrator:
 
             # HHA conversion using depth camera intrinsics
             K = self.config.cameras.depth_camera_matrix.to_numpy_array()
-            hha = self.hha_service.convert(depth_aug.astype(np.float32), K.astype(np.float32))
+            hha = self.hha_service.convert(
+                depth_aug.astype(np.float32),
+                K.astype(np.float32),
+                roi=roi_cfg,
+                exclude_mask=mask_aug.astype(bool),
+                ransac_thresh_cm=float(self.config.hha.ransac_thresh_cm),
+                min_inlier_ratio=float(self.config.hha.min_inlier_ratio),
+            )
+            diagnostics_aug = self.diag_service.compute(
+                depth_aug.astype(np.float32),
+                K.astype(np.float32),
+                roi=roi_cfg,
+                exclude_mask=mask_aug.astype(bool),
+                ransac_thresh_cm=float(self.config.hha.ransac_thresh_cm),
+                min_inlier_ratio=float(self.config.hha.min_inlier_ratio),
+            )
 
             processed = ProcessedFrameData(
                 identifier=frame_id,
@@ -155,6 +196,7 @@ class PipelineOrchestrator:
                 run_dir,
                 save_hha_channels_jet=getattr(self.config.outputs, "save_hha_channels_jet", False),
                 outputs=getattr(self.config, 'outputs', None),
+                diagnostics=diagnostics_aug,
             )
 
 

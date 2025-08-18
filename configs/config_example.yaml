@@ -31,6 +31,17 @@ cameras:
     cx: 396.903
     cy: 295.821
 
+hha:
+  # ROI specified in fractions of image size
+  bottom_band_frac: 0.25
+  side_band_frac: 0.05
+  center_exclude_width_frac: 0.40
+  # RANSAC params (centimetres in vendor code)
+  ransac_thresh_cm: 1.5
+  min_inlier_ratio: 0.12
+  ransac_seed: 42
+  gravity_init: -z
+
 outputs:
   save_hha_channels_jet: true
   enable_train_export: true

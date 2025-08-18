@@ -35,7 +35,22 @@ def main() -> None:
     cfg = ConfigService().load_config(args.config)
     K = cfg.cameras.depth_camera_matrix.to_numpy_array().astype(np.float32)
 
-    hha = HHAService().convert(depth_m, K)
+    # Build ROI/options from config
+    roi_cfg = {
+        'bottom_band_frac': float(cfg.hha.bottom_band_frac),
+        'side_band_frac': float(cfg.hha.side_band_frac),
+        'center_exclude_width_frac': float(cfg.hha.center_exclude_width_frac),
+        'ransac_seed': int(cfg.hha.ransac_seed),
+        'gravity_init': str(cfg.hha.gravity_init),
+    }
+    hha = HHAService().convert(
+        depth_m,
+        K,
+        roi=roi_cfg,
+        exclude_mask=None,
+        ransac_thresh_cm=float(cfg.hha.ransac_thresh_cm),
+        min_inlier_ratio=float(cfg.hha.min_inlier_ratio),
+    )
 
     # Normalize/convert HHA to 8-bit without saturating channels
     def to_uint8(img: np.ndarray) -> np.ndarray:

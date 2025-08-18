@@ -27,7 +27,16 @@ class HHAService:
                 return func  # type: ignore[return-value]
         return None
 
-    def convert(self, depth_map_m: np.ndarray, camera_matrix: np.ndarray) -> np.ndarray:
+    def convert(
+        self,
+        depth_map_m: np.ndarray,
+        camera_matrix: np.ndarray,
+        *,
+        roi: Optional[dict] = None,
+        exclude_mask: Optional[np.ndarray] = None,
+        ransac_thresh_cm: float = 2.0,
+        min_inlier_ratio: float = 0.1,
+    ) -> np.ndarray:
         """Convert a metric depth map to an HHA image using the external library.
 
         Raises a clear error if the converter is unavailable.
@@ -44,7 +53,15 @@ class HHAService:
                 "compute_hha, computeHHA."
             )
 
-        hha = self._converter(depth_map_m, camera_matrix)
+        # Delegate to adapter with extended parameters
+        hha = self._converter(
+            depth_map_m,
+            camera_matrix,
+            roi=roi,
+            exclude_mask=exclude_mask,
+            ransac_thresh_cm=ransac_thresh_cm,
+            min_inlier_ratio=min_inlier_ratio,
+        )
         if not isinstance(hha, np.ndarray) or (hha.ndim != 3 or hha.shape[2] != 3):
             raise RuntimeError("depth2hha returned unexpected result; expected HxWx3 ndarray")
         return hha

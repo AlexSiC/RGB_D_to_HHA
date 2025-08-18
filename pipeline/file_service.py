@@ -173,6 +173,7 @@ class FileService:
         run_dir: Path,
         save_hha_channels_jet: bool = False,
         outputs: Optional[Any] = None,
+        diagnostics: Optional[Any] = None,
     ) -> None:
         # Save filled depth (m -> uint16 mm)
         depth_dir = run_dir / "depth_filled_png"
@@ -185,6 +186,8 @@ class FileService:
         self._ensure_dir(hha_dir)
         hha_uint16 = np.clip(np.round(data.hha_image * 1000.0), 0, 65535).astype(np.uint16)
         cv2.imwrite(str(hha_dir / f"{data.identifier.base_name}_hha.png"), hha_uint16)
+
+        # Debug overlay removed per request
 
         # Also save visualization-friendly version normalized to uint8 per channel
         hha = data.hha_image.astype(np.float32)
@@ -203,6 +206,26 @@ class FileService:
                 scaled = np.clip((chan - vmin) * 255.0 / (vmax - vmin), 0, 255).astype(np.uint8)
             vis[:, :, ch] = scaled
         cv2.imwrite(str(hha_dir / f"{data.identifier.base_name}_hha_vis_u8.png"), vis)
+
+        # Optional diagnostics: save ROI/inliers/fixed-height and plane.json
+        if diagnostics:
+            try:
+                import json
+                diag_img = diagnostics.get('roi_mask') if isinstance(diagnostics, dict) else None
+                if diag_img is not None:
+                    cv2.imwrite(str(hha_dir / f"{data.identifier.base_name}_roi_mask.png"), np.ascontiguousarray(diag_img))
+                diag_img = diagnostics.get('inlier_mask') if isinstance(diagnostics, dict) else None
+                if diag_img is not None:
+                    cv2.imwrite(str(hha_dir / f"{data.identifier.base_name}_inliers_mask.png"), np.ascontiguousarray(diag_img))
+                diag_img = diagnostics.get('height_fixed_u8') if isinstance(diagnostics, dict) else None
+                if diag_img is not None:
+                    cv2.imwrite(str(hha_dir / f"{data.identifier.base_name}_height_fixed_u8.png"), np.ascontiguousarray(diag_img))
+                plane = diagnostics.get('plane') if isinstance(diagnostics, dict) else None
+                if plane is not None:
+                    with open(hha_dir / f"{data.identifier.base_name}_plane.json", 'w', encoding='utf-8') as f:
+                        json.dump(plane, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
 
         # Optional: save per-channel JET visualizations if requested by caller
         if save_hha_channels_jet:

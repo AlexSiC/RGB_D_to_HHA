@@ -55,6 +55,27 @@ class PipelineConfig(BaseModel):
         rgb_camera_matrix: CameraIntrinsics
         depth_camera_matrix: CameraIntrinsics
 
+    class HHAConfig(BaseModel):
+        """Parameters controlling HHA base-plane estimation.
+
+        All fractional values are relative to image dimensions.
+        """
+
+        # Use only the bottom band of the image when sampling points for plane fitting
+        bottom_band_frac: float = Field(0.35, ge=0.0, le=1.0)
+        # Additionally keep side stripes in the bottom band to catch visible floor at edges
+        side_band_frac: float = Field(0.0, ge=0.0, le=0.5)
+        # Exclude a centered horizontal stripe within the bottom band (e.g., where bags lie)
+        center_exclude_width_frac: float = Field(0.4, ge=0.0, le=1.0)
+
+        # RANSAC plane fit parameters (depth units are centimetres inside the vendor code)
+        ransac_thresh_cm: float = Field(2.0, ge=0.1)
+        min_inlier_ratio: float = Field(0.1, ge=0.0, le=1.0)
+        # Deterministic RANSAC: set a fixed seed for reproducibility
+        ransac_seed: int = 42
+        # Initial guess for gravity direction in camera frame. Options: 'y', '-y', 'z', '-z'
+        gravity_init: str = "-z"
+
     class PathsConfig(BaseModel):
         raw_dir: str
         processed_dir: str
@@ -69,6 +90,7 @@ class PipelineConfig(BaseModel):
     inpainting: InpaintingConfig
     augmentation: AugmentationConfig
     cameras: CamerasConfig
+    hha: HHAConfig = HHAConfig()
     paths: PathsConfig
     outputs: OutputsConfig = OutputsConfig()
 
