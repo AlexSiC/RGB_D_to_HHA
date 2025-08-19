@@ -41,6 +41,15 @@ class PipelineOrchestrator:
         self.run_dir = self._create_run_dir()
 
     def _setup_logging(self) -> None:
+        """Configure logging to write both to file and console.
+
+        Creates the `logs/` directory if it does not exist and attaches two
+        handlers:
+        - File handler: `logs/pipeline.log` (UTF-8)
+        - Stream handler: standard output
+
+        Logging level is set to INFO.
+        """
         logs_dir = Path("logs")
         logs_dir.mkdir(parents=True, exist_ok=True)
         logging.basicConfig(
@@ -53,6 +62,11 @@ class PipelineOrchestrator:
         )
 
     def _create_run_dir(self) -> Path:
+        """Create and return a unique directory for current pipeline run.
+
+        The directory is placed under `processed_dir` with a timestamped name
+        `run_YYYYMMDD_HHMMSS` to keep runs separated and reproducible.
+        """
         processed_base = Path(self.config.paths.processed_dir)
         timestamp = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
         run_dir = processed_base / f"run_{timestamp}"
@@ -60,6 +74,16 @@ class PipelineOrchestrator:
         return run_dir
 
     def run_full_pipeline(self) -> None:
+        """Discover frames and process them with error handling and progress bar.
+
+        - Discovers frames using `FileService.discover_frames` based on
+          `config.paths.raw_dir`.
+        - Iterates with `tqdm` progress bar.
+        - For each frame, calls `process_single_frame` inside try/except so that
+          errors are logged and processing continues.
+        - Collects failed `frame_id.base_name` values and writes them into
+          `logs/failed_files.txt` if any failures occurred.
+        """
         frames = self.file_service.discover_frames(self.config.paths.raw_dir)
         logging.info("Discovered %d frames", len(frames))
         failed_list: list[str] = []
@@ -81,6 +105,11 @@ class PipelineOrchestrator:
             logging.info("Completed successfully. All frames processed.")
 
     def _validate_dimensions(self, raw: RawFrameData) -> None:
+        """Ensure RGB and depth maps have identical spatial dimensions.
+
+        Raises:
+            RuntimeError: if dimensions do not match.
+        """
         rgb_h, rgb_w = raw.rgb_image.shape[:2]
         depth_h, depth_w = raw.depth_map_mm.shape[:2]
         if (rgb_h, rgb_w) != (depth_h, depth_w):
@@ -89,6 +118,21 @@ class PipelineOrchestrator:
             )
 
     def process_single_frame(self, frame_id: FrameIdentifier) -> None:
+        """Process a single frame end-to-end and save artifacts.
+
+        Steps:
+            1. Load raw data (RGB, depth, polygons).
+            2. Validate dimensions.
+            3. Save raw depth (PNG, uint16 mm) for traceability.
+            4. Inpaint depth (mm -> m) using configured method.
+            5. Convert polygons to a rasterized mask.
+            6. Compute baseline HHA and diagnostics (no augmentation) and save.
+            7. For each requested augmentation seed, apply augmentation, compute
+               HHA and diagnostics, and save into per-seed subdirectories.
+
+        Args:
+            frame_id: Identifier with paths to RGB/depth/annotations.
+        """
         raw: RawFrameData = self.file_service.load_raw_data(frame_id)
         self._validate_dimensions(raw)
 
