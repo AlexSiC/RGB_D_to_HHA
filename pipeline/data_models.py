@@ -86,6 +86,7 @@ class PipelineConfig(BaseModel):
         enable_train_export: bool = False
         train_dir: str = "data/train"
         save_hha_u8_in_train: bool = False
+        enable_processed_export: bool = False
 
     inpainting: InpaintingConfig
     augmentation: AugmentationConfig

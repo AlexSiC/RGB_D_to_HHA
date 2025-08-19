@@ -103,9 +103,11 @@ class PipelineOrchestrator:
 
         # Prepare list of seeds for multi-variant run (baseline + variants)
         seeds = list(self.config.augmentation.seeds or [])
-
-        # Baseline: if augmentation disabled OR seeds empty, still produce one variant
-        variant_seeds = seeds if seeds else [self.config.augmentation.seed]
+        # If augmentation is disabled, do not produce any variants beyond baseline
+        if getattr(self.config.augmentation, "enabled", True):
+            variant_seeds = seeds if seeds else [self.config.augmentation.seed]
+        else:
+            variant_seeds = []
 
         # Always produce baseline (no augmentation) in root run_dir
         K = self.config.cameras.depth_camera_matrix.to_numpy_array()

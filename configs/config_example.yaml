@@ -47,6 +47,7 @@ outputs:
   enable_train_export: true
   train_dir: data/train
   save_hha_u8_in_train: false
+  enable_processed_export: false
 
 # Placeholder config. Will be filled in later.
 

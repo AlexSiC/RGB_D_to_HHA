@@ -33,6 +33,9 @@ def parse_args() -> argparse.Namespace:
         help="Override augmentation.enabled",
     )
     parser.add_argument("--inpainting-method", type=str, help="Override inpainting.method")
+    # New toggles for exports
+    parser.add_argument("--train-export", type=str, choices=["true", "false"], help="Override outputs.enable_train_export")
+    parser.add_argument("--processed-export", type=str, choices=["true", "false"], help="Override outputs.enable_processed_export")
     return parser.parse_args()
 
 
@@ -65,6 +68,10 @@ def main() -> None:
         config.augmentation.enabled = args.augmentation_enabled.lower() == "true"
     if args.inpainting_method is not None:
         config.inpainting.method = str(args.inpainting_method)
+    if args.train_export is not None:
+        config.outputs.enable_train_export = args.train_export.lower() == "true"
+    if args.processed_export is not None:
+        config.outputs.enable_processed_export = args.processed_export.lower() == "true"
 
     # Apply generic overrides
     for ov in args.overrides or []:

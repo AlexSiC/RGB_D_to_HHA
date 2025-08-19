@@ -175,17 +175,20 @@ class FileService:
         outputs: Optional[Any] = None,
         diagnostics: Optional[Any] = None,
     ) -> None:
-        # Save filled depth (m -> uint16 mm)
-        depth_dir = run_dir / "depth_filled_png"
-        self._ensure_dir(depth_dir)
-        depth_mm_uint16 = np.clip(np.round(data.depth_map_filled_m * 1000.0), 0, 65535).astype(np.uint16)
-        cv2.imwrite(str(depth_dir / f"{data.identifier.base_name}_depth_filled.png"), depth_mm_uint16)
+        # Save filled depth (m -> uint16 mm) if processed export enabled
+        do_processed = bool(getattr(outputs, 'enable_processed_export', False)) if outputs is not None else False
+        if do_processed:
+            depth_dir = run_dir / "depth_filled_png"
+            self._ensure_dir(depth_dir)
+            depth_mm_uint16 = np.clip(np.round(data.depth_map_filled_m * 1000.0), 0, 65535).astype(np.uint16)
+            cv2.imwrite(str(depth_dir / f"{data.identifier.base_name}_depth_filled.png"), depth_mm_uint16)
 
-        # Save HHA (assumed float32 in [0..some_scale]); scale to uint16 via 1000 as per spec
-        hha_dir = run_dir / "hha_png"
-        self._ensure_dir(hha_dir)
+        # Prepare HHA representations regardless of processed export (train may need them)
         hha_uint16 = np.clip(np.round(data.hha_image * 1000.0), 0, 65535).astype(np.uint16)
-        cv2.imwrite(str(hha_dir / f"{data.identifier.base_name}_hha.png"), hha_uint16)
+        hha_dir = run_dir / "hha_png"
+        if do_processed:
+            self._ensure_dir(hha_dir)
+            cv2.imwrite(str(hha_dir / f"{data.identifier.base_name}_hha.png"), hha_uint16)
 
         # Debug overlay removed per request
 
@@ -205,7 +208,8 @@ class FileService:
             else:
                 scaled = np.clip((chan - vmin) * 255.0 / (vmax - vmin), 0, 255).astype(np.uint8)
             vis[:, :, ch] = scaled
-        cv2.imwrite(str(hha_dir / f"{data.identifier.base_name}_hha_vis_u8.png"), vis)
+        if do_processed:
+            cv2.imwrite(str(hha_dir / f"{data.identifier.base_name}_hha_vis_u8.png"), vis)
 
         # Optional diagnostics: save ROI/inliers/fixed-height and plane.json
         if diagnostics:
@@ -228,7 +232,7 @@ class FileService:
                 pass
 
         # Optional: save per-channel JET visualizations if requested by caller
-        if save_hha_channels_jet:
+        if do_processed and save_hha_channels_jet:
             # Angle (A), Height (H), Disparity (D) channels assumed order [A,H,D]
             names = ['angle', 'height', 'disparity']
             for ch, name in enumerate(names):
@@ -311,20 +315,20 @@ class FileService:
             # Do not fail pipeline due to export errors
             pass
 
-        # Save mask (uint8) into run_dir for reference
-        masks_dir = run_dir / "masks"
-        self._ensure_dir(masks_dir)
-        _mask_u8 = data.segmentation_mask.astype(np.uint8)
-        cv2.imwrite(str(masks_dir / f"{data.identifier.base_name}_mask.png"), _mask_u8)
+        if do_processed:
+            masks_dir = run_dir / "masks"
+            self._ensure_dir(masks_dir)
+            _mask_u8 = data.segmentation_mask.astype(np.uint8)
+            cv2.imwrite(str(masks_dir / f"{data.identifier.base_name}_mask.png"), _mask_u8)
 
         # Save (possibly augmented) RGB image
-        rgb_dir = run_dir / "rgb"
-        self._ensure_dir(rgb_dir)
-        rgb_bgr = data.rgb_image
-        # Ensure 8-bit
-        if rgb_bgr.dtype != np.uint8:
-            rgb_bgr = np.clip(np.round(rgb_bgr), 0, 255).astype(np.uint8)
-        cv2.imwrite(str(rgb_dir / f"{data.identifier.base_name}_rgb.png"), rgb_bgr)
+        if do_processed:
+            rgb_dir = run_dir / "rgb"
+            self._ensure_dir(rgb_dir)
+            rgb_bgr = data.rgb_image
+            if rgb_bgr.dtype != np.uint8:
+                rgb_bgr = np.clip(np.round(rgb_bgr), 0, 255).astype(np.uint8)
+            cv2.imwrite(str(rgb_dir / f"{data.identifier.base_name}_rgb.png"), rgb_bgr)
 
 
 
