@@ -27,7 +27,14 @@ class AnnotationService:
         height, width = int(shape[0]), int(shape[1])
         mask = np.zeros((height, width), dtype=np.uint8)
 
-        for class_id, coords in polygons:
+        # Enforce class drawing priority so that higher-priority classes are painted last.
+        # Rule: class 1 has higher priority than class 2 (1 overrides 2 on overlaps).
+        # Within the same class we keep the original order: later polygons overwrite earlier ones.
+        priority_rank = {2: 0, 1: 1}
+        # Stable sort by rank only; equal ranks preserve input order
+        polygons_ordered = sorted(polygons, key=lambda pc: priority_rank.get(int(pc[0]), 0))
+
+        for class_id, coords in polygons_ordered:
             if coords is None:
                 continue
             vertices = np.asarray(coords, dtype=np.float32).reshape(-1, 2)
