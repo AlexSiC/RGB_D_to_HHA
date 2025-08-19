@@ -66,10 +66,13 @@ def _build_overlay(color_bgr: Tuple[int, int, int], mask: np.ndarray) -> np.ndar
 
 
 def _parse_class_colors(spec: str | None) -> Dict[int, Tuple[int, int, int]]:
-    """Parse mapping like '1=#00FF00,2=#FF00FF' into {1:(b,g,r), ...}."""
-    mapping: Dict[int, Tuple[int, int, int]] = {}
+    """Parse mapping like '1=#00FF00,2=#FF0000' into {1:(b,g,r), ...}.
+
+    If not provided, defaults to two classes: 1=green, 2=red.
+    """
     if not spec:
-        return mapping
+        return {1: (0, 255, 0), 2: (0, 0, 255)}
+    mapping: Dict[int, Tuple[int, int, int]] = {}
     parts = [p.strip() for p in spec.split(',') if p.strip()]
     for part in parts:
         if '=' not in part:
@@ -100,19 +103,25 @@ def overlay_directory(images_dir: Path, masks_dir: Path, out_dir: Path, alpha: f
         base = _load_hha_as_u8(img_path)
         mask = _load_mask(mask_path)
 
-        # Per-class colors if provided
+        # Mask-aware blending: blend ONLY where mask==class_id to keep colors visible on bright HHA
+        blended = base.copy()
+        b32 = base.astype(np.float32)
+        a = float(alpha)
         if class_colors:
-            overlay = np.zeros_like(base, dtype=np.uint8)
             ids = np.unique(mask)
             for cls_id in ids:
-                if cls_id == 0:
+                if int(cls_id) == 0:
                     continue
-                color = class_colors.get(int(cls_id), color_default)
-                overlay[mask == cls_id] = color
+                sel = (mask == int(cls_id))
+                if not np.any(sel):
+                    continue
+                color = np.array(class_colors.get(int(cls_id), color_default), dtype=np.float32)
+                blended[sel] = np.clip((1.0 - a) * b32[sel] + a * color, 0, 255).astype(np.uint8)
         else:
-            overlay = _build_overlay(color_default, mask)
-
-        blended = cv2.addWeighted(base, 1.0, overlay, float(alpha), 0.0)
+            sel = mask > 0
+            if np.any(sel):
+                color = np.array(color_default, dtype=np.float32)
+                blended[sel] = np.clip((1.0 - a) * b32[sel] + a * color, 0, 255).astype(np.uint8)
 
         if draw_contours and np.any(mask):
             contours, _ = cv2.findContours((mask > 0).astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -132,7 +141,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--out-dir', required=True, help="Directory to write overlay visualizations")
     parser.add_argument('--alpha', type=float, default=0.45, help="Overlay opacity [0..1] (default: 0.45)")
     parser.add_argument('--color', type=str, default="#FF00FF", help="Default overlay color for non-zero mask, hex like #RRGGBB")
-    parser.add_argument('--class-colors', type=str, default=None, help="Optional per-class mapping '1=#00FF00,2=#FF00FF'")
+    parser.add_argument('--class-colors', type=str, default=None, help="Optional per-class mapping '1=#00FF00,2=#FF0000'. If omitted: 1=green, 2=red")
     parser.add_argument('--contours', action='store_true', help="Draw mask contours on top of overlay")
     return parser.parse_args()
 
